@@ -215,15 +215,6 @@ DEFINE_BITFIELD(bot_cover_flags, list(
 ///if it's currently affected by a saboteur bolt (lowered perp threat level)
 #define SECBOT_SABOTEUR_AFFECTED (1<<5)
 
-DEFINE_BITFIELD(security_mode_flags, list(
-	"SECBOT_DECLARE_ARRESTS" = SECBOT_DECLARE_ARRESTS,
-	"SECBOT_CHECK_IDS" = SECBOT_CHECK_IDS,
-	"SECBOT_CHECK_WEAPONS" = SECBOT_CHECK_WEAPONS,
-	"SECBOT_CHECK_RECORDS" = SECBOT_CHECK_RECORDS,
-	"SECBOT_HANDCUFF_TARGET" = SECBOT_HANDCUFF_TARGET,
-	"SECBOT_SABOTEUR_AFFECTED" = SECBOT_SABOTEUR_AFFECTED,
-))
-
 //MedBOT defines
 ///Whether to declare if someone (we are healing) is in critical condition
 #define MEDBOT_DECLARE_CRIT (1<<0)
@@ -236,13 +227,6 @@ DEFINE_BITFIELD(security_mode_flags, list(
 
 ///can we heal all damage?
 #define HEAL_ALL_DAMAGE "all_damage"
-
-DEFINE_BITFIELD(medical_mode_flags, list(
-	"MEDBOT_DECLARE_CRIT" = MEDBOT_DECLARE_CRIT,
-	"MEDBOT_STATIONARY_MODE" = MEDBOT_STATIONARY_MODE,
-	"MEDBOT_SPEAK_MODE" = MEDBOT_SPEAK_MODE,
-	"MEDBOT_TIPPED_MODE" = MEDBOT_TIPPED_MODE,
-))
 
 //cleanBOT defines on what to clean
 #define CLEANBOT_CLEAN_BLOOD (1<<0)
