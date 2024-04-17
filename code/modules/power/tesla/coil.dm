@@ -1,81 +1,72 @@
-/obj/machinery/power/energy_accumulator/tesla_coil
+/obj/machinery/power/tesla_coil
 	name = "tesla coil"
-	desc = "For the union!"
-	icon = 'icons/obj/machines/engine/tesla_coil.dmi'
+	desc = ""
+	icon = 'icons/obj/tesla_engine/tesla_coil.dmi'
 	icon_state = "coil0"
+	anchored = FALSE
+	density = TRUE
 
 	// Executing a traitor caught releasing tesla was never this fun!
 	can_buckle = TRUE
-	buckle_lying = 0
+	buckle_lying = FALSE
 	buckle_requires_restraints = TRUE
-	can_change_cable_layer = TRUE
 
 	circuit = /obj/item/circuitboard/machine/tesla_coil
 
-	///Flags of the zap that the coil releases when the wire is pulsed
-	var/zap_flags = ZAP_MOB_DAMAGE | ZAP_OBJ_DAMAGE | ZAP_LOW_POWER_GEN
-	///Multiplier for power conversion
+	var/tesla_flags = TESLA_MOB_DAMAGE | TESLA_OBJ_DAMAGE
+	var/power_loss = 2
 	var/input_power_multiplier = 1
-	///Cooldown between pulsed zaps
 	var/zap_cooldown = 100
-	///Reference to the last zap done
 	var/last_zap = 0
 
-	//Variables to calculate sound based on stored_energy to give engineers an audioclue of the magnitude of energy production.
-	///Calculated range of zap sounds based on power
-	var/zap_sound_range = 0
-	///Calculated volume of zap sounds based on power
-	var/zap_sound_volume = 0
+	var/datum/techweb/linked_techweb
 
-/obj/machinery/power/energy_accumulator/tesla_coil/anchored
-	anchored = TRUE
+/obj/machinery/power/tesla_coil/power
+	circuit = /obj/item/circuitboard/machine/tesla_coil/power
 
-/obj/machinery/power/energy_accumulator/tesla_coil/Initialize(mapload)
+/obj/machinery/power/tesla_coil/Initialize()
 	. = ..()
-	set_wires(new /datum/wires/tesla_coil(src))
+	wires = new /datum/wires/tesla_coil(src)
+	linked_techweb = SSresearch.science_tech
 
-/obj/machinery/power/energy_accumulator/tesla_coil/cable_layer_act(mob/living/user, obj/item/tool)
-	if(panel_open)
-		return NONE
-	if(anchored)
-		balloon_alert(user, "unanchor first!")
-		return ITEM_INTERACT_BLOCKING
-	return ..()
+/obj/machinery/power/testla_coil/should_have_node()
+	return anchored
 
-/obj/machinery/power/energy_accumulator/tesla_coil/RefreshParts()
-	. = ..()
+/obj/machinery/power/tesla_coil/RefreshParts()
 	var/power_multiplier = 0
 	zap_cooldown = 100
-	for(var/datum/stock_part/capacitor/capacitor in component_parts)
-		power_multiplier += capacitor.tier
-		zap_cooldown -= (capacitor.tier * 20)
-	input_power_multiplier = max(1 * (power_multiplier / 8), 0.25) //Max out at 50% efficency.
+	for(var/obj/item/stock_parts/capacitor/C in component_parts)
+		power_multiplier += C.rating
+		zap_cooldown -= (C.rating * 20)
+	input_power_multiplier = power_multiplier
 
-/obj/machinery/power/energy_accumulator/tesla_coil/examine(mob/user)
+/obj/machinery/power/tesla_coil/examine(mob/user)
 	. = ..()
 	if(in_range(user, src) || isobserver(user))
-		. += span_notice("The status display reads:<br>" + \
-		  "Power generation at <b>[input_power_multiplier*100]%</b>.<br>" + \
-			"Shock interval at <b>[zap_cooldown*0.1]</b> seconds.<br>" + \
-			"Stored <b>[display_energy(get_stored_joules())]</b>.<br>" + \
-			"Processing <b>[display_power(processed_energy)]</b>.")
+		. += "<span class='notice'>The status display reads: Power generation at <b>[input_power_multiplier*100]%</b>.<br>Shock interval at <b>[zap_cooldown*0.1]</b> seconds.</span>"
 
-/obj/machinery/power/energy_accumulator/tesla_coil/default_unfasten_wrench(mob/user, obj/item/I, time = 20)
+/obj/machinery/power/tesla_coil/on_construction()
+	if(anchored)
+		connect_to_network()
+
+/obj/machinery/power/tesla_coil/default_unfasten_wrench(mob/user, obj/item/I, time = 20)
 	. = ..()
 	if(. == SUCCESSFUL_UNFASTEN)
 		if(panel_open)
 			icon_state = "coil_open[anchored]"
 		else
 			icon_state = "coil[anchored]"
+		if(anchored)
+			connect_to_network()
+		else
+			disconnect_from_network()
 		update_cable_icons_on_turf(get_turf(src))
 
-/obj/machinery/power/energy_accumulator/tesla_coil/wrench_act(mob/living/user, obj/item/tool)
-	. = ..()
-	default_unfasten_wrench(user, tool)
-	return ITEM_INTERACT_SUCCESS
-
-/obj/machinery/power/energy_accumulator/tesla_coil/attackby(obj/item/W, mob/user, params)
+/obj/machinery/power/tesla_coil/attackby(obj/item/W, mob/user, params)
 	if(default_deconstruction_screwdriver(user, "coil_open[anchored]", "coil[anchored]", W))
+		return
+
+	if(default_unfasten_wrench(user, W))
 		return
 
 	if(default_deconstruction_crowbar(W))
@@ -87,61 +78,94 @@
 
 	return ..()
 
-/obj/machinery/power/energy_accumulator/tesla_coil/process(seconds_per_tick)
-	. = ..()
-	zap_sound_volume = min(energy_to_power(processed_energy) / (4 KILO WATTS), 100) // 1 sound volume per 4kW.
-	zap_sound_range = min(energy_to_power(processed_energy) / (80 KILO WATTS), 10) // 1 sound range per 80kW.
+/obj/machinery/power/tesla_coil/tesla_act(power, tesla_flags, shocked_targets)
+	if(anchored && !panel_open)
+		obj_flags |= BEING_SHOCKED
+		//don't lose arc power when it's not connected to anything
+		//please place tesla coils all around the station to maximize effectiveness
+		var/power_produced = powernet ? power / power_loss : power
+		add_avail(power_produced*input_power_multiplier)
+		flick("coilhit", src)
+		playsound(src.loc, 'sound/blank.ogg', 100, TRUE, extrarange = 5)
+		tesla_zap(src, 5, power_produced, tesla_flags, shocked_targets)
+		var/datum/bank_account/D = SSeconomy.get_dep_account(ACCOUNT_ENG)
+		if(D)
+			D.adjust_money(min(power_produced, 1))
+		if(istype(linked_techweb))
+			linked_techweb.add_point_type(TECHWEB_POINT_TYPE_DEFAULT, min(power_produced, 1)) // x4 coils = ~240/m point bonus for R&D
+		addtimer(CALLBACK(src, .proc/reset_shocked), 10)
+		tesla_buckle_check(power)
+	else
+		..()
 
-/obj/machinery/power/energy_accumulator/tesla_coil/zap_act(power, zap_flags)
-	if(!anchored || panel_open)
-		return ..()
-	ADD_TRAIT(src, TRAIT_BEING_SHOCKED, WAS_SHOCKED)
-	addtimer(TRAIT_CALLBACK_REMOVE(src, TRAIT_BEING_SHOCKED, WAS_SHOCKED), 1 SECONDS)
-	flick("coilhit", src)
-	if(!(zap_flags & ZAP_GENERATES_POWER)) //Prevent infinite recursive power
-		return 0
-	if(zap_flags & ZAP_LOW_POWER_GEN)
-		power /= 10
-	zap_buckle_check(power)
-	var/power_removed = powernet ? power * input_power_multiplier : power
-	stored_energy += max(power_removed, 0)
-	return max(power - power_removed, 0) //You get back the amount we didn't use
-
-/obj/machinery/power/energy_accumulator/tesla_coil/proc/zap()
+/obj/machinery/power/tesla_coil/proc/zap()
 	if((last_zap + zap_cooldown) > world.time || !powernet)
 		return FALSE
 	last_zap = world.time
-	var/power = (powernet.avail) * 0.2 * input_power_multiplier  //Always always always use more then you output for the love of god
-	power = min(surplus(), power) //Take the smaller of the two
+	var/coeff = (20 - ((input_power_multiplier - 1) * 3))
+	coeff = max(coeff, 10)
+	var/power = (powernet.avail/2)
 	add_load(power)
-	playsound(src.loc, 'sound/magic/lightningshock.ogg', zap_sound_volume, TRUE, zap_sound_range)
-	tesla_zap(source = src, zap_range = 10, power = power, cutoff = 1e3, zap_flags = zap_flags)
-	zap_buckle_check(power)
+	playsound(src.loc, 'sound/blank.ogg', 100, TRUE, extrarange = 5)
+	tesla_zap(src, 10, power/(coeff/2), tesla_flags)
+	tesla_buckle_check(power/(coeff/2))
 
-/obj/machinery/power/energy_accumulator/grounding_rod
+// Tesla R&D researcher
+/obj/machinery/power/tesla_coil/research
+	name = "Tesla Corona Analyzer"
+	desc = ""
+	icon_state = "rpcoil0"
+	circuit = /obj/item/circuitboard/machine/tesla_coil/research
+	power_loss = 20 // something something, high voltage + resistance
+
+/obj/machinery/power/tesla_coil/research/tesla_act(power, tesla_flags, shocked_things)
+	if(anchored && !panel_open)
+		obj_flags |= BEING_SHOCKED
+		var/power_produced = powernet ? power / power_loss : power
+		add_avail(power_produced*input_power_multiplier)
+		flick("rpcoilhit", src)
+		playsound(src.loc, 'sound/blank.ogg', 100, TRUE, extrarange = 5)
+		tesla_zap(src, 5, power_produced, tesla_flags, shocked_things)
+		var/datum/bank_account/D = SSeconomy.get_dep_account(ACCOUNT_ENG)
+		if(D)
+			D.adjust_money(min(power_produced, 3))
+		if(istype(linked_techweb))
+			linked_techweb.add_point_type(TECHWEB_POINT_TYPE_DEFAULT, min(power_produced, 3)) // x4 coils with a pulse per second or so = ~720/m point bonus for R&D
+		addtimer(CALLBACK(src, .proc/reset_shocked), 10)
+		tesla_buckle_check(power)
+	else
+		..()
+
+/obj/machinery/power/tesla_coil/research/default_unfasten_wrench(mob/user, obj/item/wrench/W, time = 20)
+	. = ..()
+	if(. == SUCCESSFUL_UNFASTEN)
+		if(panel_open)
+			icon_state = "rpcoil_open[anchored]"
+		else
+			icon_state = "rpcoil[anchored]"
+
+/obj/machinery/power/tesla_coil/research/attackby(obj/item/W, mob/user, params)
+	if(default_deconstruction_screwdriver(user, "rpcoil_open[anchored]", "rpcoil[anchored]", W))
+		return
+	return ..()
+
+/obj/machinery/power/tesla_coil/research/on_construction()
+	if(anchored)
+		connect_to_network()
+
+/obj/machinery/power/grounding_rod
 	name = "grounding rod"
-	desc = "Keeps an area from being fried by Edison's Bane."
-	icon = 'icons/obj/machines/engine/tesla_coil.dmi'
+	desc = ""
+	icon = 'icons/obj/tesla_engine/tesla_coil.dmi'
 	icon_state = "grounding_rod0"
 	anchored = FALSE
 	density = TRUE
-	wants_powernet = FALSE
 
 	can_buckle = TRUE
-	buckle_lying = 0
+	buckle_lying = FALSE
 	buckle_requires_restraints = TRUE
 
-/obj/machinery/power/energy_accumulator/grounding_rod/anchored
-	anchored = TRUE
-
-/obj/machinery/power/energy_accumulator/grounding_rod/examine(mob/user)
-	. = ..()
-	if(in_range(user, src) || isobserver(user))
-		. += span_notice("The status display reads:<br>" + \
-			"Recently grounded <b>[display_energy(get_stored_joules())]</b>.<br>" + \
-			"This energy would sustainably release <b>[display_power(calculate_sustainable_power(), convert = FALSE)]</b>.")
-
-/obj/machinery/power/energy_accumulator/grounding_rod/default_unfasten_wrench(mob/user, obj/item/I, time = 20)
+/obj/machinery/power/grounding_rod/default_unfasten_wrench(mob/user, obj/item/I, time = 20)
 	. = ..()
 	if(. == SUCCESSFUL_UNFASTEN)
 		if(panel_open)
@@ -149,13 +173,11 @@
 		else
 			icon_state = "grounding_rod[anchored]"
 
-/obj/machinery/power/energy_accumulator/grounding_rod/wrench_act(mob/living/user, obj/item/tool)
-	. = ..()
-	default_unfasten_wrench(user, tool)
-	return ITEM_INTERACT_SUCCESS
-
-/obj/machinery/power/energy_accumulator/grounding_rod/attackby(obj/item/W, mob/user, params)
+/obj/machinery/power/grounding_rod/attackby(obj/item/W, mob/user, params)
 	if(default_deconstruction_screwdriver(user, "grounding_rod_open[anchored]", "grounding_rod[anchored]", W))
+		return
+
+	if(default_unfasten_wrench(user, W))
 		return
 
 	if(default_deconstruction_crowbar(W))
@@ -163,15 +185,9 @@
 
 	return ..()
 
-/obj/machinery/power/energy_accumulator/grounding_rod/zap_act(energy, zap_flags)
+/obj/machinery/power/grounding_rod/tesla_act(var/power)
 	if(anchored && !panel_open)
 		flick("grounding_rodhit", src)
-		zap_buckle_check(energy)
-		stored_energy += energy
-		return 0
+		tesla_buckle_check(power)
 	else
-		. = ..()
-/obj/machinery/power/energy_accumulator/grounding_rod/release_energy(joules = 0)
-	stored_energy -= joules
-	processed_energy = joules
-	return FALSE //Grounding rods don't release energy to the grid.
+		..()

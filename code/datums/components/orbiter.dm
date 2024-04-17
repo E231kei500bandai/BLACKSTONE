@@ -1,7 +1,7 @@
 /datum/component/orbiter
 	can_transfer = TRUE
 	dupe_mode = COMPONENT_DUPE_UNIQUE_PASSARGS
-	var/list/orbiter_list
+	var/list/orbiters
 	var/datum/movement_detector/tracker
 
 //radius: range to orbit at, radius of the circle formed by orbiting (in pixels)
@@ -13,53 +13,49 @@
 	if(!istype(orbiter) || !isatom(parent) || isarea(parent))
 		return COMPONENT_INCOMPATIBLE
 
-	orbiter_list = list()
+	orbiters = list()
 
 	begin_orbit(orbiter, radius, clockwise, rotation_speed, rotation_segments, pre_rotation)
+
+/datum/component/orbiter/PostTransfer()
+	if(!isatom(parent) || isarea(parent))
+		return COMPONENT_INCOMPATIBLE
 
 /datum/component/orbiter/RegisterWithParent()
 	var/atom/target = parent
 
 	target.orbiters = src
-	if(ismovable(target))
-		tracker = new(target, CALLBACK(src, PROC_REF(move_react)))
+	if(ismovableatom(target))
+		tracker = new(target, CALLBACK(src, .proc/move_react))
+	RegisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE, .proc/orbiter_glide_size_update)
 
-	RegisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE, PROC_REF(orbiter_glide_size_update))
 
 /datum/component/orbiter/UnregisterFromParent()
-	UnregisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE)
 	var/atom/target = parent
 	target.orbiters = null
 	QDEL_NULL(tracker)
+	UnregisterSignal(parent, COMSIG_MOVABLE_UPDATE_GLIDE_SIZE)
+
 
 /datum/component/orbiter/Destroy()
 	var/atom/master = parent
-	if(master.orbiters == src)
-		master.orbiters = null
-	for(var/i in orbiter_list)
+	master.orbiters = null
+	for(var/i in orbiters)
 		end_orbit(i)
-	orbiter_list = null
+	orbiters = null
 	return ..()
 
-/datum/component/orbiter/InheritComponent(datum/component/orbiter/newcomp, original, atom/movable/orbiter, radius, clockwise, rotation_speed, rotation_segments, pre_rotation)
-	if(!newcomp)
-		begin_orbit(arglist(args.Copy(3)))
+/datum/component/orbiter/InheritComponent(datum/component/orbiter/newcomp, original, list/arguments)
+	if(arguments)
+		begin_orbit(arglist(arguments))
 		return
 	// The following only happens on component transfers
-	for(var/o in newcomp.orbiter_list)
-		var/atom/movable/incoming_orbiter = o
-		incoming_orbiter.orbiting = src
-		// It is important to transfer the signals so we don't get locked to the new orbiter component for all time
-		newcomp.UnregisterSignal(incoming_orbiter, COMSIG_MOVABLE_MOVED)
-		RegisterSignal(incoming_orbiter, COMSIG_MOVABLE_MOVED, PROC_REF(orbiter_move_react))
-
-	orbiter_list += newcomp.orbiter_list
-	newcomp.orbiter_list = null
+	orbiters += newcomp.orbiters
 
 /datum/component/orbiter/PostTransfer()
 	if(!isatom(parent) || isarea(parent) || !get_turf(parent))
 		return COMPONENT_INCOMPATIBLE
-	move_react(parent)
+	move_react()
 
 /datum/component/orbiter/proc/begin_orbit(atom/movable/orbiter, radius, clockwise, rotation_speed, rotation_segments, pre_rotation)
 	if(orbiter.orbiting)
@@ -67,16 +63,11 @@
 			orbiter.orbiting.end_orbit(orbiter, TRUE)
 		else
 			orbiter.orbiting.end_orbit(orbiter)
-	orbiter_list[orbiter] = TRUE
+	orbiters[orbiter] = TRUE
 	orbiter.orbiting = src
-
-	ADD_TRAIT(orbiter, TRAIT_NO_FLOATING_ANIM, ORBITING_TRAIT)
-	RegisterSignal(orbiter, COMSIG_MOVABLE_MOVED, PROC_REF(orbiter_move_react))
-
+	RegisterSignal(orbiter, COMSIG_MOVABLE_MOVED, .proc/orbiter_move_react)
 	SEND_SIGNAL(parent, COMSIG_ATOM_ORBIT_BEGIN, orbiter)
-
 	var/matrix/initial_transform = matrix(orbiter.transform)
-	orbiter_list[orbiter] = initial_transform
 
 	// Head first!
 	if(pre_rotation)
@@ -92,37 +83,31 @@
 	orbiter.transform = shift
 
 	orbiter.SpinAnimation(rotation_speed, -1, clockwise, rotation_segments, parallel = FALSE)
-
 	if(ismob(orbiter))
-		var/mob/orbiter_mob = orbiter
-		orbiter_mob.updating_glide_size = FALSE
-	if(ismovable(parent))
-		var/atom/movable/movable_parent = parent
-		orbiter.glide_size = movable_parent.glide_size
-
-	orbiter.abstract_move(get_turf(parent))
-	to_chat(orbiter, span_notice("Now orbiting [parent]."))
+		var/mob/M = orbiter
+		M.updating_glide_size = FALSE
+	if(ismovableatom(parent))
+		var/atom/movable/AM = parent
+		orbiter.glide_size = AM.glide_size
+	//we stack the orbits up client side, so we can assign this back to normal server side without it breaking the orbit
+	orbiter.transform = initial_transform
+	orbiter.forceMove(get_turf(parent))
+	to_chat(orbiter, "<span class='notice'>Now orbiting [parent].</span>")
 
 /datum/component/orbiter/proc/end_orbit(atom/movable/orbiter, refreshing=FALSE)
-	if(!orbiter_list[orbiter])
+	if(!orbiters[orbiter])
 		return
 	UnregisterSignal(orbiter, COMSIG_MOVABLE_MOVED)
 	SEND_SIGNAL(parent, COMSIG_ATOM_ORBIT_STOP, orbiter)
 	orbiter.SpinAnimation(0, 0)
-	if(istype(orbiter_list[orbiter],/matrix)) //This is ugly.
-		orbiter.transform = orbiter_list[orbiter]
-	orbiter_list -= orbiter
+	orbiters -= orbiter
 	orbiter.stop_orbit(src)
 	orbiter.orbiting = null
-
 	if(ismob(orbiter))
-		var/mob/orbiter_mob = orbiter
-		orbiter_mob.updating_glide_size = TRUE
-		orbiter_mob.glide_size = 8
-
-	REMOVE_TRAIT(orbiter, TRAIT_NO_FLOATING_ANIM, ORBITING_TRAIT)
-
-	if(!refreshing && !length(orbiter_list) && !QDELING(src))
+		var/mob/M = orbiter
+		M.updating_glide_size = TRUE
+		M.glide_size = 8
+	if(!refreshing && !length(orbiters) && !QDELING(src))
 		qdel(src)
 
 // This proc can receive signals by either the thing being directly orbited or anything holding it
@@ -137,42 +122,35 @@
 		qdel(src)
 
 	var/atom/curloc = master.loc
-	for(var/atom/movable/movable_orbiter as anything in orbiter_list)
-		if(QDELETED(movable_orbiter) || movable_orbiter.loc == newturf)
+	for(var/i in orbiters)
+		var/atom/movable/thing = i
+		if(QDELETED(thing) || thing.loc == newturf)
 			continue
-		movable_orbiter.abstract_move(newturf)
+		thing.forceMove(newturf)
 		if(CHECK_TICK && master.loc != curloc)
 			// We moved again during the checktick, cancel current operation
 			break
 
 
 /datum/component/orbiter/proc/orbiter_move_react(atom/movable/orbiter, atom/oldloc, direction)
-	SIGNAL_HANDLER
-
 	if(orbiter.loc == get_turf(parent))
 		return
 	end_orbit(orbiter)
 
 /datum/component/orbiter/proc/orbiter_glide_size_update(datum/source, target)
-	SIGNAL_HANDLER
-	for(var/orbiter in orbiter_list)
-		var/atom/movable/movable_orbiter = orbiter
-		movable_orbiter.glide_size = target
+	for(var/atom/movable/orbiter in orbiters)
+		if(orbiter)
+			orbiter.glide_size = target
 
 /////////////////////
 
 /atom/movable/proc/orbit(atom/A, radius = 10, clockwise = FALSE, rotation_speed = 20, rotation_segments = 36, pre_rotation = TRUE)
 	if(!istype(A) || !get_turf(A) || A == src)
 		return
-	if (HAS_TRAIT(A, TRAIT_ORBITING_FORBIDDEN))
-		// Stealth-mins have an empty name, don't want "You cannot orbit   at this time."
-		to_chat(src, span_notice("You cannot orbit ["[A]" || "them"] at this time."))
-		return
-	orbit_target = A
+
 	return A.AddComponent(/datum/component/orbiter, src, radius, clockwise, rotation_speed, rotation_segments, pre_rotation)
 
 /atom/movable/proc/stop_orbit(datum/component/orbiter/orbits)
-	orbit_target = null
 	return // We're just a simple hook
 
 /atom/proc/transfer_observers_to(atom/target)

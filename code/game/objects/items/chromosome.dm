@@ -1,8 +1,8 @@
 /obj/item/chromosome
 	name = "blank chromosome"
-	icon = 'icons/obj/science/chromosomes.dmi'
+	icon = 'icons/obj/chromosomes.dmi'
 	icon_state = ""
-	desc = "A tube holding chromosomic data."
+	desc = ""
 	force = 0
 	w_class = WEIGHT_CLASS_SMALL
 
@@ -11,7 +11,7 @@
 	var/power_coeff = 1 //higher is better, affects "strength"
 	var/energy_coeff = 1 //lower is better. affects recharge time
 
-	var/weight = 5
+	var/cweight = 5
 
 /obj/item/chromosome/proc/can_apply(datum/mutation/human/HM)
 	if(!HM || !(HM.can_chromosome == CHROMOSOME_NONE))
@@ -34,13 +34,9 @@
 		HM.power_coeff = power_coeff
 	if(HM.energy_coeff != -1)
 		HM.energy_coeff = energy_coeff
-	HM.can_chromosome = CHROMOSOME_USED
+	HM.can_chromosome = 2
 	HM.chromosome_name = name
-
-	// Do the actual modification
-	if(HM.modify())
-		HM.modified = TRUE
-
+	HM.modify()
 	qdel(src)
 
 /proc/generate_chromosome()
@@ -49,33 +45,48 @@
 		chromosomes = list()
 		for(var/A in subtypesof(/obj/item/chromosome))
 			var/obj/item/chromosome/CM = A
-			if(!initial(CM.weight))
+			if(!initial(CM.cweight))
 				break
-			chromosomes[A] = initial(CM.weight)
-	return pick_weight(chromosomes)
+			chromosomes[A] = initial(CM.cweight)
+	return pickweight(chromosomes)
 
 
 /obj/item/chromosome/stabilizer
 	name = "stabilizer chromosome"
-	desc = "A chromosome that reduces mutation instability by 20%."
+	desc = ""
 	icon_state = "stabilizer"
 	stabilizer_coeff = 0.8
-	weight = 1
+
 
 /obj/item/chromosome/synchronizer
 	name = "synchronizer chromosome"
-	desc = "A chromosome that reduces mutation knockback and downsides by 50%."
+	desc = ""
 	icon_state = "synchronizer"
 	synchronizer_coeff = 0.5
 
 /obj/item/chromosome/power
 	name = "power chromosome"
-	desc = "A chromosome that increases mutation power by 50%."
+	desc = ""
 	icon_state = "power"
 	power_coeff = 1.5
 
 /obj/item/chromosome/energy
 	name = "energetic chromosome"
-	desc = "A chromosome that reduces action based mutation cooldowns by by 50%."
+	desc = ""
 	icon_state = "energy"
 	energy_coeff = 0.5
+
+/obj/item/chromosome/reinforcer
+	name = "reinforcement chromosome"
+	desc = ""
+	icon_state = "reinforcer"
+
+
+/obj/item/chromosome/reinforcer/can_apply(datum/mutation/human/HM)
+	if(!HM || !(HM.can_chromosome == CHROMOSOME_NONE))
+		return FALSE
+	return !HM.mutadone_proof
+
+/obj/item/chromosome/reinforcer/apply(datum/mutation/human/HM)
+	HM.mutadone_proof = TRUE
+	..()

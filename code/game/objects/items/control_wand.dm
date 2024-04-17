@@ -1,30 +1,26 @@
-#define WAND_OPEN "open"
-#define WAND_BOLT "bolt"
-#define WAND_EMERGENCY "emergency"
+#define WAND_OPEN "Open Door"
+#define WAND_BOLT "Toggle Bolts"
+#define WAND_EMERGENCY "Toggle Emergency Access"
 
 /obj/item/door_remote
-	icon_state = "remote"
-	base_icon_state = "remote"
-	inhand_icon_state = "electronic"
-	lefthand_file = 'icons/mob/inhands/items/devices_lefthand.dmi'
-	righthand_file = 'icons/mob/inhands/items/devices_righthand.dmi'
-	icon = 'icons/obj/devices/remote.dmi'
+	icon_state = "gangtool-white"
+	item_state = "electronic"
+	lefthand_file = 'icons/mob/inhands/misc/devices_lefthand.dmi'
+	righthand_file = 'icons/mob/inhands/misc/devices_righthand.dmi'
+	icon = 'icons/obj/device.dmi'
 	name = "control wand"
-	desc = "A remote for controlling a set of airlocks."
+	desc = ""
 	w_class = WEIGHT_CLASS_TINY
-
-	var/department = "civilian"
 	var/mode = WAND_OPEN
-	var/region_access = REGION_GENERAL
+	var/region_access = 1 //See access.dm
 	var/list/access_list
 
-/obj/item/door_remote/Initialize(mapload)
+/obj/item/door_remote/Initialize()
 	. = ..()
-	access_list = SSid_access.get_region_access_list(list(region_access))
-	update_icon_state()
+	access_list = get_region_accesses(region_access)
+	AddComponent(/datum/component/ntnet_interface)
 
 /obj/item/door_remote/attack_self(mob/user)
-	var/static/list/desc = list(WAND_OPEN = "Open Door", WAND_BOLT = "Toggle Bolts", WAND_EMERGENCY = "Toggle Emergency Access")
 	switch(mode)
 		if(WAND_OPEN)
 			mode = WAND_BOLT
@@ -32,118 +28,75 @@
 			mode = WAND_EMERGENCY
 		if(WAND_EMERGENCY)
 			mode = WAND_OPEN
-	update_icon_state()
-	balloon_alert(user, "mode: [desc[mode]]")
+	to_chat(user, "<span class='notice'>Now in mode: [mode].</span>")
 
 // Airlock remote works by sending NTNet packets to whatever it's pointed at.
-/obj/item/door_remote/afterattack(atom/target, mob/user)
+/obj/item/door_remote/afterattack(atom/A, mob/user)
 	. = ..()
+	var/datum/component/ntnet_interface/target_interface = A.GetComponent(/datum/component/ntnet_interface)
 
-	var/obj/machinery/door/door
-
-	if (istype(target, /obj/machinery/door))
-		door = target
-
-		if (!door.opens_with_door_remote)
-			return
-	else
-		for (var/obj/machinery/door/door_on_turf in get_turf(target))
-			if (door_on_turf.opens_with_door_remote)
-				door = door_on_turf
-				break
-
-		if (isnull(door))
-			return
-
-	if (!door.check_access_list(access_list) || !door.requiresID())
-		target.balloon_alert(user, "can't access!")
+	if(!target_interface)
 		return
 
-	var/obj/machinery/door/airlock/airlock = door
+	// Generate a control packet.
+	var/datum/netdata/data = new
+	data.recipient_ids = list(target_interface.hardware_id)
 
-	if (!door.hasPower() || (istype(airlock) && !airlock.canAIControl()))
-		target.balloon_alert(user, mode == WAND_OPEN ? "it won't budge!" : "nothing happens!")
-		return
-
-	switch (mode)
-		if (WAND_OPEN)
-			if (door.density)
-				door.open()
-			else
-				door.close()
-		if (WAND_BOLT)
-			if (!istype(airlock))
-				target.balloon_alert(user, "only airlocks!")
-				return
-
-			if (airlock.locked)
-				airlock.unbolt()
-				log_combat(user, airlock, "unbolted", src)
-			else
-				airlock.bolt()
-				log_combat(user, airlock, "bolted", src)
-		if (WAND_EMERGENCY)
-			if (!istype(airlock))
-				target.balloon_alert(user, "only airlocks!")
-				return
-
-			airlock.emergency = !airlock.emergency
-			airlock.update_appearance(UPDATE_ICON)
-
-/obj/item/door_remote/update_icon_state()
-	var/icon_state_mode
 	switch(mode)
 		if(WAND_OPEN)
-			icon_state_mode = "open"
+			data.data["data"] = "open"
 		if(WAND_BOLT)
-			icon_state_mode = "bolt"
+			data.data["data"] = "bolt"
 		if(WAND_EMERGENCY)
-			icon_state_mode = "emergency"
+			data.data["data"] = "emergency"
 
-	icon_state = "[base_icon_state]_[department]_[icon_state_mode]"
-	return ..()
+	data.data["data_secondary"] = "toggle"
+	data.passkey = access_list
+
+	ntnet_send(data)
+
 
 /obj/item/door_remote/omni
 	name = "omni door remote"
-	desc = "This control wand can access any door on the station."
-	department = "omni"
-	region_access = REGION_ALL_STATION
+	desc = ""
+	icon_state = "gangtool-yellow"
+	region_access = 0
 
 /obj/item/door_remote/captain
 	name = "command door remote"
-	department = "command"
-	region_access = REGION_COMMAND
+	icon_state = "gangtool-yellow"
+	region_access = 7
 
 /obj/item/door_remote/chief_engineer
 	name = "engineering door remote"
-	department = "engi"
-	region_access = REGION_ENGINEERING
+	icon_state = "gangtool-orange"
+	region_access = 5
 
 /obj/item/door_remote/research_director
 	name = "research door remote"
-	department = "sci"
-	region_access = REGION_RESEARCH
+	icon_state = "gangtool-purple"
+	region_access = 4
 
 /obj/item/door_remote/head_of_security
 	name = "security door remote"
-	department = "security"
-	region_access = REGION_SECURITY
+	icon_state = "gangtool-red"
+	region_access = 2
 
 /obj/item/door_remote/quartermaster
 	name = "supply door remote"
-	desc = "Remotely controls airlocks. This remote has additional Vault access."
-	department = "cargo"
-	region_access = REGION_SUPPLY
+	desc = ""
+	icon_state = "gangtool-green"
+	region_access = 6
 
 /obj/item/door_remote/chief_medical_officer
 	name = "medical door remote"
-	department = "med"
-	region_access = REGION_MEDBAY
+	icon_state = "gangtool-blue"
+	region_access = 3
 
-/obj/item/door_remote/civilian
+/obj/item/door_remote/civillian
 	name = "civilian door remote"
-	department = "civilian"
-	region_access = REGION_GENERAL
+	icon_state = "gangtool-white"
+	region_access = 1
 
 #undef WAND_OPEN
 #undef WAND_BOLT

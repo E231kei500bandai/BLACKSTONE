@@ -1,92 +1,121 @@
-/// Any humanoid (non-Xeno) mob, such as humans, plasmamen, lizards.
 /mob/living/carbon/human
 	name = "Unknown"
 	real_name = "Unknown"
-	icon = 'icons/mob/human/human.dmi'
+	icon = 'icons/mob/human.dmi'
 	icon_state = "human_basic"
-	appearance_flags = KEEP_TOGETHER|TILE_BOUND|PIXEL_SCALE|LONG_GLIDE
-	hud_possible = list(HEALTH_HUD,STATUS_HUD,ID_HUD,WANTED_HUD,IMPLOYAL_HUD,IMPSEC_FIRST_HUD,IMPSEC_SECOND_HUD,ANTAG_HUD,GLAND_HUD,SENTIENT_DISEASE_HUD,FAN_HUD)
+	appearance_flags = KEEP_TOGETHER|TILE_BOUND|PIXEL_SCALE
+	hud_possible = list(HEALTH_HUD,STATUS_HUD,ID_HUD,WANTED_HUD,IMPLOYAL_HUD,IMPCHEM_HUD,IMPTRACK_HUD, NANITE_HUD, DIAG_NANITE_FULL_HUD,ANTAG_HUD,GLAND_HUD,SENTIENT_DISEASE_HUD)
 	hud_type = /datum/hud/human
+	base_intents = list(INTENT_HELP, INTENT_DISARM, INTENT_GRAB, INTENT_HARM)
+	possible_mmb_intents = list(INTENT_STEAL, INTENT_JUMP, INTENT_KICK, INTENT_BITE, INTENT_GIVE)
 	pressure_resistance = 25
 	can_buckle = TRUE
-	buckle_lying = 0
+	buckle_lying = FALSE
 	mob_biotypes = MOB_ORGANIC|MOB_HUMANOID
-	can_be_shoved_into = TRUE
-	initial_language_holder = /datum/language_holder/empty // We get stuff from our species
-	flags_1 = PREVENT_CONTENTS_EXPLOSION_1
+
+	ambushable = 1
+
+	var/footstep_type = FOOTSTEP_MOB_HUMAN
+
+	var/last_sound //last emote so we have no doubles
 
 	//Hair colour and style
-	var/hair_color = COLOR_BLACK
+	var/hair_color = "000"
 	var/hairstyle = "Bald"
 
-	///Colours used for hair and facial hair gradients.
-	var/list/grad_color
-	///Styles used for hair and facial hair gradients.
-	var/list/grad_style
-
 	//Facial hair colour and style
-	var/facial_hair_color = COLOR_BLACK
+	var/facial_hair_color = "000"
 	var/facial_hairstyle = "Shaved"
 
 	//Eye colour
-	var/eye_color_left = COLOR_BLACK
-	var/eye_color_right = COLOR_BLACK
-	/// Var used to keep track of a human mob having a heterochromatic right eye. To ensure prefs don't overwrite shit
-	var/eye_color_heterochromatic = FALSE
+	var/eye_color = "000"
 
-	var/skin_tone = "caucasian1" //Skin tone
+	var/voice_color = "a0a0a0"
 
-	var/lip_style = null //no lipstick by default- arguably misleading, as it could be used for general makeup
-	var/lip_color = COLOR_WHITE
+	var/detail_color = "000"
 
-	var/age = 30 //Player's age
+	var/skin_tone = "caucasian1"	//Skin tone
 
-	/// Which body type to use
-	var/physique = MALE
+	var/lip_style = null	//no lipstick by default- arguably misleading, as it could be used for general makeup
+	var/lip_color = "white"
 
-	//consider updating /mob/living/carbon/human/copy_clothing_prefs() if adding more of these
-	var/underwear = "Nude" //Which underwear the player wants
-	var/underwear_color = COLOR_BLACK
+	var/age = "Adult"		//Player's age
+
+	var/underwear = "Nude"	//Which underwear the player wants
+	var/underwear_color
 	var/undershirt = "Nude" //Which undershirt the player wants
+
+	var/cached_underwear = "Nude"
+
+	var/accessory = "None"
+	var/detail = "None"
+	var/marking = "None"
+
+	var/shavelevel = 0
+
 	var/socks = "Nude" //Which socks the player wants
-	var/backpack = DBACKPACK //Which backpack type the player has chosen.
-	var/jumpsuit_style = PREF_SUIT //suit/skirt
+	var/backpack = DBACKPACK		//Which backpack type the player has chosen.
+	var/jumpsuit_style = PREF_SUIT		//suit/skirt
 
 	//Equipment slots
-	var/obj/item/clothing/wear_suit = null
-	var/obj/item/clothing/w_uniform = null
+	var/obj/item/clothing/skin_armor = null
+	var/obj/item/clothing/wear_armor = null
+	var/obj/item/clothing/wear_pants = null
 	var/obj/item/belt = null
-	var/obj/item/wear_id = null
+	var/obj/item/beltl = null
+	var/obj/item/beltr = null
+	var/obj/item/wear_ring = null
+	var/obj/item/wear_wrists = null
 	var/obj/item/r_store = null
 	var/obj/item/l_store = null
 	var/obj/item/s_store = null
+	var/obj/item/cloak = null
+	var/obj/item/clothing/wear_shirt = null
 
 	var/special_voice = "" // For changing our voice. Used by a symptom.
 
+	var/name_override //For temporary visible name changes
+
 	var/datum/physiology/physiology
 
-	/// What types of mobs are allowed to ride/buckle to this mob
-	var/static/list/can_ride_typecache = typecacheof(list(
-		/mob/living/basic/parrot,
-		/mob/living/carbon/human,
-		/mob/living/basic/slime,
-	))
+	var/list/datum/bioware = list()
+
+	var/static/list/can_ride_typecache = typecacheof(list(/mob/living/carbon/human, /mob/living/simple_animal/slime, /mob/living/simple_animal/parrot))
 	var/lastpuke = 0
+	var/last_fire_update
 	var/account_id
 
-	var/hardcore_survival_score = 0
+	canparry = TRUE
+	candodge = TRUE
 
-	/// How many "units of blood" we have on our hands
-	var/blood_in_hands = 0
+	dodgecd = FALSE
+	dodgetime = 0
 
-	/// The core temperature of the human compaired to the skin temp of the body
-	var/coretemperature = BODYTEMP_NORMAL
+	var/list/possibleclass
+	var/advsetup = 0
+	var/advpicking
 
-	///Exposure to damaging heat levels increases stacks, stacks clean over time when temperatures are lower. Stack is consumed to add a wound.
-	var/heat_exposure_stacks = 0
+//	var/alignment = ALIGNMENT_TN
 
-	/// When an braindead player has their equipment fiddled with, we log that info here for when they come back so they know who took their ID while they were DC'd for 30 seconds
-	var/list/afk_thefts
+	var/advjob = null
+	var/canseebandits = FALSE
 
-	/// Height of the mob
-	VAR_PROTECTED/mob_height = HUMAN_HEIGHT_MEDIUM
+	var/marriedto
+
+	var/has_stubble = TRUE
+
+	var/original_name = null
+
+	var/buried = FALSE // Whether the body is buried or not.
+	var/funeral = FALSE // Whether the body has received rites or not.
+
+	var/cleric = null // Used for cleric_holder for priests
+
+	possible_rmb_intents = list(/datum/rmb_intent/feint,\
+	/datum/rmb_intent/aimed,\
+	/datum/rmb_intent/strong,\
+	/datum/rmb_intent/swift,\
+	/datum/rmb_intent/riposte,\
+	/datum/rmb_intent/weak)
+
+	rot_type = /datum/component/rot/corpse

@@ -8,27 +8,23 @@
 */
 
 /obj/item/poster/wanted
-	icon_state = "rolled_poster_legit"
+	icon_state = "rolled_poster"
 	var/postHeaderText = "WANTED" // MAX 7 Characters
-	var/postHeaderColor = COLOR_RED
+	var/postHeaderColor = "#FF0000"
 	var/background = "wanted_background"
 	var/postName = "wanted poster"
-	var/postDesc = "A wanted poster for"
+	var/postDesc = ""
 
 /obj/item/poster/wanted/missing
 	postName = "missing poster"
-	postDesc = "A missing poster for"
+//	postdesc = ""
 	postHeaderText = "MISSING" // MAX 7 Characters
-	postHeaderColor = COLOR_BLUE
+	postHeaderColor = "#0000FF"
 
-
-/obj/item/poster/wanted/Initialize(mapload, icon/person_icon, wanted_name, description, headerText, posterHeaderColor)
-	if(posterHeaderColor)
-		postHeaderColor = posterHeaderColor
-	var/obj/structure/sign/poster/wanted/wanted_poster = new (src, person_icon, wanted_name, description, headerText, postHeaderColor, background, postName, postDesc)
-	. = ..(mapload, wanted_poster)
+/obj/item/poster/wanted/Initialize(mapload, icon/person_icon, wanted_name, description, headerText)
+	. = ..(mapload, new /obj/structure/sign/poster/wanted(src, person_icon, wanted_name, description, headerText, postHeaderColor, background, postName, postDesc))
 	name = "[postName] ([wanted_name])"
-	desc = "[postDesc] [wanted_name]."
+	desc = ""
 	postHeaderText = headerText
 
 /obj/structure/sign/poster/wanted
@@ -37,9 +33,6 @@
 	var/postDesc
 	var/posterHeaderText
 	var/posterHeaderColor
-	var/icon/original_icon //cache the passed icon incase we ever get torn down and need to regenerate it.
-
-	poster_item_type = /obj/item/poster/wanted
 
 /obj/structure/sign/poster/wanted/Initialize(mapload, icon/person_icon, person_name, description, postHeaderText, postHeaderColor, background, pname, pdesc)
 	. = ..()
@@ -56,7 +49,6 @@
 	desc = description
 
 	person_icon = icon(person_icon, dir = SOUTH)//copy the image so we don't mess with the one in the record.
-	original_icon = icon(person_icon) //cache this incase it gets torn down
 	var/icon/the_icon = icon("icon" = 'icons/obj/poster_wanted.dmi', "icon_state" = background)
 	person_icon.Shift(SOUTH, 7)
 	person_icon.Crop(7,4,26,30)
@@ -67,8 +59,8 @@
 	print_across_top(the_icon, postHeaderText, postHeaderColor)
 
 	the_icon.Insert(the_icon, "wanted")
-	the_icon.Insert(icon('icons/obj/poster.dmi', "poster_being_set"), "poster_being_set")
-	the_icon.Insert(icon('icons/obj/poster.dmi', "poster_ripped"), "poster_ripped")
+	the_icon.Insert(icon('icons/obj/contraband.dmi', "poster_being_set"), "poster_being_set")
+	the_icon.Insert(icon('icons/obj/contraband.dmi', "poster_ripped"), "poster_ripped")
 
 	icon = the_icon
 
@@ -86,17 +78,18 @@
 	var/i
 	for(i=1; i <= textLen, i++)
 		var/letter = uppertext(text[i])
-		var/icon/letter_icon = icon("icon" = 'icons/misc/Font_Minimal.dmi', "icon_state" = letter)
+		var/icon/letter_icon = icon("icon" = 'icons/Font_Minimal.dmi', "icon_state" = letter)
 		letter_icon.Shift(EAST, startX) //16 - (2*n)
 		letter_icon.Shift(SOUTH, 2)
 		letter_icon.SwapColor(rgb(255,255,255), color)
 		poster_icon.Blend(letter_icon, ICON_OVERLAY)
 		startX = startX + 4
 
-/obj/structure/sign/poster/wanted/roll_and_drop(atom/location, mob/user)
-	pixel_x = 0
-	pixel_y = 0
-	var/obj/item/poster/rolled_poster = new poster_item_type(location, original_icon, wanted_name, desc, posterHeaderText, posterHeaderColor)
-	if(!user?.put_in_hands(rolled_poster))
-		forceMove(rolled_poster)
-	return rolled_poster
+/obj/structure/sign/poster/wanted/roll_and_drop(turf/location)
+	var/obj/item/poster/wanted/P = ..(location)
+	P.name = "[postName] ([wanted_name])"
+	P.desc = ""
+	P.postHeaderText = posterHeaderText
+	P.postHeaderColor = posterHeaderColor
+	return P
+

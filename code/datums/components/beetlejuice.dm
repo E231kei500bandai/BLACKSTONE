@@ -10,7 +10,7 @@
 	var/regex/R
 
 /datum/component/beetlejuice/Initialize()
-	if(!ismovable(parent))
+	if(!ismovableatom(parent))
 		return COMPONENT_INCOMPATIBLE
 
 	first_heard = list()
@@ -23,7 +23,7 @@
 		keyword = M.real_name
 	update_regex()
 
-	RegisterSignal(SSdcs, COMSIG_GLOB_LIVING_SAY_SPECIAL, PROC_REF(say_react))
+	RegisterSignal(SSdcs, COMSIG_GLOB_LIVING_SAY_SPECIAL, .proc/say_react)
 
 /datum/component/beetlejuice/proc/update_regex()
 	R = regex("[REGEX_QUOTE(keyword)]","g[case_sensitive ? "" : "i"]")
@@ -33,10 +33,8 @@
 	if (var_name == NAMEOF(src, keyword) || var_name == NAMEOF(src, case_sensitive))
 		update_regex()
 
-/datum/component/beetlejuice/proc/say_react(datum/source, mob/speaker, message)
-	SIGNAL_HANDLER
-
-	if(!speaker || speaker == parent || !message || !active)
+/datum/component/beetlejuice/proc/say_react(datum/source, mob/speaker,message)
+	if(!speaker || !message || !active)
 		return
 	var/found = R.Find(message)
 	if(found)
