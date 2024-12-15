@@ -164,6 +164,10 @@
 		M.add_nausea(50)
 	..()
 
+/datum/reagent/water/salt
+	taste_description = "salt"
+	hydration = -6 //salt water dehydrates you
+
 /*
  *	Water reaction to turf
  */

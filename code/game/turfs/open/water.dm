@@ -369,3 +369,23 @@
 	for(var/atom/movable/A in contents)
 		if((A.loc == src) && A.has_gravity())
 			A.ConveyorMove(dir)
+
+/turf/open/water/ocean
+	name = "ocean"
+	desc = "Algae and debris gathers atop the waves."
+	icon = 'icons/turf/roguefloor.dmi'
+	icon_state = "together"
+	water_level = 2
+	water_color = "#6a9295"
+	slowdown = 3
+	wash_in = TRUE
+	water_reagent = /datum/reagent/water/salt
+
+/turf/open/water/ocean/deep
+	name = "ocean"
+	desc = "Deep, dark water with choppy waves."
+	icon_state = "together"
+	water_level = 3
+	water_color = "#253989"
+	slowdown = 5
+	swim_skill = TRUE
